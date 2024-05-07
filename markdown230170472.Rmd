@@ -1,0 +1,300 @@
+---
+title: "Project_Markdown"
+output:
+  pdf_document:
+    latex_engine: pdflatex
+header-includes:
+  - \usepackage{geometry}
+  - \geometry{margin=1in}
+date: "2024-05-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Data Origins
+
+The data used in this project was gathered from the [IEA50 Global EV Data Explorer](https://www.iea.org/data-and-statistics/data-tools/global-ev-data-explorer) as part of the Global EV Outlook initiative. This is an annual publication of the developments of electric mobility worldwide and was formed in conjunction with Electric Vehicle Initiative (EVI) members. The datasets contain information and statistics about the sales, shares and infrastructure of EVs starting from 2010. For this project, the data for electric car sales and charging stations was selected for processing. These datasets contains individual information from 47 and 33 countries respectively, as well as grouped statistics for the EU27, Europe, rest of the world and all data globally.
+
+In the sales dataset, 'powertrain' refers to the type of electric vehicle determined based on how the motor recieves power. This is split into BEV (Battery Electric Vehicle), FCEV (Fuel Cell Electric vehicle/Hydrogen powered), and PHEC (Plug-in Hybrid Electric Vehicle).
+
+The variable 'powertrain' in the charging points dataset refers to the power output of the public charging station, either being fast or slow. I was unable to find anywhere on the IEA website what constitutes fast or slow charging stations, but a general wider concensus is that fast charging uses high-power DC, capable of approx. 80% battery in 30 minutes, with slow charging using lower-powered AC taking up to 6-8 hours for a full charge. 
+
+
+
+Here are the first few rows of each raw dataset:
+
+
+```{r, echo=FALSE}
+# Stores the raw data from the csv files as variables 
+
+salesData <- read.csv('EV_sales_data.csv')
+
+head(salesData)
+
+chargingData <- read.csv('EV_Charging_Data.csv')
+
+head(chargingData)
+
+```
+
+
+
+# Research Questions 
+
+**How has the emergence of electric powered mobility unfolded across the globe and the UK?**
+
+# Data Preparation
+
+
+## Setting Up
+
+
+```{r, message=FALSE}
+# Installing and loading the relevant packages
+
+suppressMessages({
+  install.packages('tidyverse', repos = "http://cran.us.r-project.org", quiet = TRUE)
+  install.packages('ggplot2', repos = "http://cran.us.r-project.org", quiet = TRUE)
+  install.packages('scales', repos = "http://cran.us.r-project.org", quiet = TRUE)
+  install.packages('forcats', repos = "http://cran.us.r-project.org", quiet = TRUE)
+
+  library(tidyverse)
+  library(ggplot2)
+  library(scales)
+  library(forcats)
+})
+
+```
+
+
+
+``` {r, results='hide'}
+# Checks the working directory to ensure necessary files are easily accessible
+
+getwd()
+
+```
+
+
+## Graph 1 Preparation
+
+``` {r}
+# Removes parts of the dataframe that are country specific, leaving just global data
+
+globalData <- salesData[apply(salesData, 1, function(row) {   
+  any(grepl("EV sales", row)) & 
+  any(grepl("World", row))
+}), ]
+
+```
+
+ 
+
+``` {r}
+# Sets a condition to check each row for any of the target words 
+# then filters the dataframe based on that condition
+
+target_words <- c("PHEV", "BEV", "FCEV")
+
+condition <- apply(globalData, 1,
+                   function(row) any(grepl(paste(target_words, collapse = "|"), row)))
+
+filtered_globalData <- subset(globalData, condition)
+
+```
+
+
+
+``` {r}
+# Removes unwanted columns leaving just the data that is to be plotted
+
+cleanGlobalData <- subset(filtered_globalData, select = -c(mode, category, region,
+                                                           parameter, unit))
+
+```
+
+
+
+Here is the first few rows of the cleaned global sales data:
+```{r, echo=FALSE}
+head(cleanGlobalData)
+
+```
+
+
+## Graph 2 Preparation
+
+
+The remaining code focuses on UK specific data, specifically the sales of new cars and public charging stations. Each dataset is shedded to leave only the relevant variables and to trim them appropriately to be plotted. In each will be 3 variables, a measure for the x and y axis, and a factor containing the levels or stacks for the bars. 
+
+``` {r}
+# Removes all data that isn't from the UK or about electric vehicle sales
+
+ukSales <- salesData[apply(salesData, 1, function(row) {   
+  any(grepl("EV sales", row)) & 
+  any(grepl("United Kingdom", row))
+}), ]
+
+```
+
+
+
+```{r}
+# Filters out the rows that groups all types of EVs together
+
+target_words <- c("PHEV", "BEV", "FCEV")
+
+condition <- apply(ukSales, 1, function(row) any(grepl(paste(target_words, 
+                                                             collapse = "|"), row)))
+
+filtered_ukSales <- subset(ukSales, condition)
+
+```
+
+
+
+```{r}
+# Removes unwanted columns, ready for plotting
+
+cleanUkSales <- subset(filtered_ukSales, select = -c(mode, category, region,
+                                                     parameter, unit))
+
+```
+
+
+
+Exampled here is the first few rows of the cleaned UK sales data:
+```{r, echo=FALSE}
+
+head(cleanUkSales)
+
+```
+
+
+
+This section cleans the UK charging station data.
+```{r}
+
+# Filters the data for UK only 
+ukChargers <- chargingData[apply(chargingData, 1, function(row) {   
+  any(grepl("United Kingdom", row))
+}), ]
+
+```
+
+
+
+``` {r}
+
+# Removes unwanted columns, ready for plotting
+cleanUkChargers <- subset(ukChargers, select = -c(region, category, parameter,
+                                                  mode, unit))
+
+```
+
+
+
+Here is the first few rows of the cleaned UK charging station data:
+``` {r, echo=FALSE}
+
+head(cleanUkChargers)
+
+```
+
+# Visualisation
+
+The following code chunk plots the first graph, showing the global electric vehicle sales over time from 2010 to 2023.
+
+``` {r, warning= FALSE}
+# Rewrites the names of each stack of the bars to the full unabbreviated names
+
+new_names <- c("Battery Electric Vehicles" = "BEV", 
+               "Fuel Cell Electric Vehicles" = "FCEV", 
+               "Plug-in Hybrid Electric Vehicles" = "PHEV")
+
+# Creates a temporary variable of the changed stack names to preserve the original data
+cleanGlobalData$temp_powertrain <- fct_recode(cleanGlobalData$powertrain, !!!new_names)
+
+# Plot stacked bar chart using ggplot2
+
+ggplot(cleanGlobalData, aes(x = year, y = value, fill = temp_powertrain)) +
+  geom_bar(stat = "identity") +
+  labs(title = element_text("Global EV Sales", hjust = 0.5), x = "Year", y = "Cars Sold",
+  fill = "Type of Vehicle") +
+  scale_fill_manual(values = c("#C25804", "#FF7200", "#DF8C49")) +  # Custom colours
+  scale_x_continuous(breaks = seq(2010, 2023, by = 2)) +
+  scale_y_continuous(breaks = seq(0, max(14000000), by = 2000000),
+                     labels = scales::number_format()) +
+  theme(panel.grid.major = element_blank(),   # Removes persisting background grid
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.28, 0.65),  # Repositions bar chart key and makes it bold
+        plot.title = element_text(hjust = 0.5)) # Horizontally centres the title
+        
+cleanGlobalData$temp_powertrain <- NULL  # Resets the temporary variable
+
+```
+
+
+
+
+
+
+
+This chunk plots the UK EV sales data with the number of public charging stations, in a stacked bar chart side by side. They use the same axis and units, allowing for easy interpretation and simplicity. For each measure, a key was produced and placed inside the graph, saving space and making it very obvious what means what. 
+
+
+``` {r, warning=FALSE}
+
+# Sets powertrain as a factor so the levels can be designated for the name change
+cleanUkChargers$powertrain <- factor(cleanUkChargers$powertrain,
+                                     levels = c("Publicly available fast",
+                                     "Publicly available slow"))
+
+# Changes names and stores in a new variable
+chargersLabel <- c("Fast Public Charging Stations" = "Publicly available fast",
+                   "Slow Public Charging Stations" = "Publicly available slow")
+
+# Recodes the levels with new names for plotting for both bar charts
+cleanUkChargers$temp_chargers <- fct_recode(cleanUkChargers$powertrain, !!!chargersLabel)
+cleanUkSales$temp_UKpowertrain <- fct_recode(cleanUkSales$powertrain, !!!new_names)
+
+p <- ggplot() +
+  geom_bar(data = cleanUkSales, aes(x = year - 0.2, y = value, fill = temp_UKpowertrain), 
+           stat = "identity", position = "stack", width = 0.5) +
+  geom_bar(data = cleanUkChargers, aes(x = year + 0.2, y = value, fill = temp_chargers), 
+           stat = "identity", position = "stack", width = 0.5) +
+  geom_line(data = cleanUkChargers, aes(x = year, y = cumsum(value)), 
+            color = "#08736E", linewidth = 1) +
+  labs(title = "New UK EV Sales and Charging Stations", 
+       x = "Year", 
+       y = "Quantity", 
+       fill = "Type of Vehicle") +
+  scale_fill_manual(values = c("#C25804", "#FF7200", "#DF8C49", "#2ABAD3", "#71E1F5")) + 
+  scale_x_continuous(breaks = seq(2010, 2023, by = 1)) +
+  scale_y_continuous(breaks = seq(0, max(450000), by = 50000), # Sets x and y axis unit intervals
+                     labels = scales::number_format()) +  # Y-axis scientific notation to standard
+  theme(panel.grid.major = element_blank(), # Removes background grid and colour
+        panel.grid.minor = element_blank(),  
+        legend.position = c(0.25, 0.56), # Repositions bar chart key and removes title
+        legend.title = element_blank(), 
+        plot.title = element_text(hjust = 0.5)) +  # Horizontally centres the title
+  annotate(geom = "text", x = 2012, y = 400000, label = "Total Charging Stations", 
+           color = "#000000") +    # Creates a key for the line graph
+  geom_segment(aes(x = 2011, xend = 2013, y = 375000, yend = 375000), 
+               color = "#08736E", size = 1) # Adds an example line for the line graph key
+               
+print(p)
+        
+```     
+        
+From this graph we can see how BEVs and PHEVs make up the vast majority of electric car sales in the UK, throughout the time period. Initially, a majority share of the market went to PHEVs, which changes in favour of BEVs around 2019-2020. Up until this time, the number of public charging stations has been closely matching the sales, the majority of which are slow charging points. After 2019-2020, there is a somewhat exponential increase in the sales of new EVs, while the number of charging stations falls behind, increasing mostly linearly.         
+        
+        
+
+# Summary
+
+
+I have found this project uniquely interesting as well as immensely useful in appreciating how data is processed and visualised. I feel confident in applying the fundamentals of the R programming language when manipulating and plotting data, and I have become comfortable and familiar with the Rstudio interface, both things for which I feel a sense of accomplishment. I have learnt how to trial and error working with code, using iterative processes and online resources to gradually add to my knowledge and apply it in real time to see results, encouraging patience and persistence. Being able to plot different graphical outputs and manipulate variables to me is a great baseline from which to expand my skills. If given more time or data, I would have liked to have possibly made an interactive chart, or integrate the energy consumption and/or the effect on emissions/climate that EVs have. I could have also expanded the breadth of my data, so as to include electric buses, vans or even scooters and graph their development over time. 
